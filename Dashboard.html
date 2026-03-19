@@ -411,6 +411,23 @@
         .btn-details { background: var(--surface2); color: var(--text2); border: 1px solid var(--border); }
         .btn-details:hover { background: var(--bg); border-color: var(--border2); }
 
+        .btn-pr {
+          font-family: 'DM Mono', monospace;
+          font-size: 10px;
+          padding: 5px 10px;
+          border-radius: 6px;
+          font-weight: 500;
+          transition: all 0.15s;
+          white-space: nowrap;
+          background: var(--accent-bg);
+          color: var(--accent);
+          border: 1px solid var(--blue-bd);
+          text-decoration: none;
+          display: inline-flex;
+          align-items: center;
+        }
+        .btn-pr:hover { background: var(--blue-bd); }
+
         /* Empty / loader */
         .empty-state {
           padding: 4rem;
@@ -752,7 +769,7 @@
     function updateStats() {
       document.getElementById('stat-total').textContent    = allTickets.length;
       document.getElementById('stat-open').textContent     = allTickets.filter(t => t.status === 'OPEN').length;
-      document.getElementById('stat-critical').textContent = allTickets.filter(t => t.severity === 'CRITICAL').length;
+      document.getElementById('stat-critical').textContent = allTickets.filter(t => t.severity === 'CRITICAL' && t.status === 'OPEN').length;
       document.getElementById('stat-resolved').textContent = allTickets.filter(t => t.status === 'APPROVED' || t.status === 'DEPLOYED').length;
     }
 
@@ -790,6 +807,9 @@
               ${t.status === 'OPEN' ? `
                 <button class="btn-approve" onclick="approveTicket(${t.id},event)">Approve</button>
                 <button class="btn-reject"  onclick="rejectTicket(${t.id},event)">Reject</button>
+              ` : ''}
+              ${t.prUrl ? `
+                <a href="${t.prUrl}" target="_blank" class="btn-pr">↗ View PR</a>
               ` : ''}
               <button class="btn-details" onclick="openModal(${t.id},event)">Details</button>
             </span>
@@ -843,7 +863,7 @@
                       <span class="audit-time">${new Date(a.createdAt).toLocaleString('en-GB')}</span>
                       <span class="audit-action">${a.action}</span>
                       <span class="audit-by">${a.performedBy}</span>
-                      <span class="audit-notes">${a.notes || ''}</span>
+                      <span class="audit-notes">${formatNotes(a.notes)}</span>
                     </div>`).join('')}
                 </div>
               </div>`;
@@ -881,6 +901,15 @@
                 <div style="font-family:'DM Mono',monospace;font-size:12px;color:var(--text2)">${t.eta || '—'}</div>
               </div>
             </div>
+
+            ${t.prUrl ? `
+            <div class="detail-section">
+              <div class="detail-label">GitHub Pull Request</div>
+              <div class="detail-value" style="display:flex;align-items:center;gap:10px">
+                <span style="font-size:18px">🔀</span>
+                <a href="${t.prUrl}" target="_blank" style="color:var(--accent);font-family:'DM Mono',monospace;font-size:12px;word-break:break-all">${t.prUrl}</a>
+              </div>
+            </div>` : ''}
 
             <div class="detail-section">
               <div class="detail-label">Root Cause</div>
@@ -956,6 +985,14 @@
       t.textContent = msg;
       document.body.appendChild(t);
       setTimeout(() => t.remove(), 3000);
+    }
+
+    function formatNotes(notes) {
+      if (!notes) return '';
+      const urlRegex = /(https?:\/\/[^\s]+)/g;
+      return notes.replace(urlRegex, url =>
+        `<a href="${url}" target="_blank" style="color:var(--accent);text-decoration:underline">${url}</a>`
+      );
     }
 
     function esc(s) {

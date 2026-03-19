@@ -40,6 +40,12 @@ public class Ticket {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt = LocalDateTime.now();
 
+    @Column(name = "pr_url", columnDefinition = "TEXT")
+    private String prUrl;
+
+    public String getPrUrl() { return prUrl; }
+    public void setPrUrl(String prUrl) { this.prUrl = prUrl; }
+
     public Ticket() {}
 
     public Long getId() { return id; }

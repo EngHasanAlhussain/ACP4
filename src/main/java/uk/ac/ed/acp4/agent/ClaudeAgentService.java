@@ -7,10 +7,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import uk.ac.ed.acp4.github.GitHubService;
 import uk.ac.ed.acp4.model.AgentResponse;
 
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
 
@@ -29,6 +28,11 @@ public class ClaudeAgentService {
     private String model;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final GitHubService gitHubService;
+
+    public ClaudeAgentService(GitHubService gitHubService) {
+        this.gitHubService = gitHubService;
+    }
 
     public AgentResponse analyze(String serviceName, List<String> logLines) {
         String sourceCode = loadSourceCode(serviceName);
@@ -50,7 +54,7 @@ public class ClaudeAgentService {
         logLines.forEach(line -> sb.append(line).append("\n"));
 
         if (sourceCode != null) {
-            sb.append("\nRelevant source code:\n").append(sourceCode).append("\n");
+            sb.append("\nRelevant source code from GitHub:\n").append(sourceCode).append("\n");
         }
 
         sb.append("""
@@ -64,8 +68,8 @@ public class ClaudeAgentService {
                   "recommendedFix": "step by step fix instructions",
                   "eta": "estimated time to resolve e.g. 2 hours",
                   "affectedUsers": "description of who is affected",
-                  "codeFilePath": "the file that needs to be changed",
-                  "codePatch": "the exact code fix as a diff or replacement snippet",
+                  "codeFilePath": "the exact filename in the repo e.g. CardService.java",
+                  "codePatch": "the FULL corrected file content (not a diff, the complete file)",
                   "codeExplanation": "why this code change fixes the problem"
                 }
 
@@ -118,17 +122,16 @@ public class ClaudeAgentService {
 
     private String loadSourceCode(String serviceName) {
         try {
-            String filename = switch (serviceName) {
-                case "card-service"    -> "CardService.java";
-                case "payment-service" -> "PaymentService.java";
-                case "auth-service"    -> "AuthService.java";
-                default                -> null;
-            };
-            if (filename == null) return null;
-            return Files.readString(Paths.get("sample-source-code/" + filename));
+            String filePath = GitHubService.serviceToFilePath(serviceName);
+            if (filePath == null) return null;
+            String code = gitHubService.readFile(filePath);
+            if (code != null) {
+                log.info("Loaded source code for {} from GitHub", serviceName);
+                return code;
+            }
         } catch (Exception e) {
-            log.warn("Could not load source code for {}: {}", serviceName, e.getMessage());
-            return null;
+            log.warn("Could not load source code from GitHub for {}: {}", serviceName, e.getMessage());
         }
+        return null;
     }
 }
