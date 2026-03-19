@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LogSentinel — Ticket Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+          --bg:         #f4f6f9;
+          --surface:    #ffffff;
+          --surface2:   #f8f9fb;
+          --border:     #e4e8ef;
+          --border2:    #d0d7e3;
+          --text:       #1a2033;
+          --text2:      #4a5568;
+          --muted:      #8a95a8;
+          --accent:     #2563eb;
+          --accent-bg:  #eff4ff;
+
+          --critical:     #dc2626;
+          --critical-bg:  #fef2f2;
+          --critical-bd:  #fecaca;
+
+          --high:         #d97706;
+          --high-bg:      #fffbeb;
+          --high-bd:      #fde68a;
+
+          --medium:       #2563eb;
+          --medium-bg:    #eff6ff;
+          --medium-bd:    #bfdbfe;
+
+          --low:          #059669;
+          --low-bg:       #ecfdf5;
+          --low-bd:       #a7f3d0;
+
+          --green:        #059669;
+          --green-bg:     #ecfdf5;
+          --green-bd:     #a7f3d0;
+
+          --amber:        #d97706;
+          --amber-bg:     #fffbeb;
+          --amber-bd:     #fde68a;
+
+          --red:          #dc2626;
+          --red-bg:       #fef2f2;
+          --red-bd:       #fecaca;
+
+          --blue:         #2563eb;
+          --blue-bg:      #eff6ff;
+          --blue-bd:      #bfdbfe;
+
+          --slate:        #64748b;
+          --slate-bg:     #f1f5f9;
+          --slate-bd:     #cbd5e1;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+          font-family: 'DM Sans', sans-serif;
+          background: var(--bg);
+          color: var(--text);
+          min-height: 100vh;
+        }
+
+        /* Header */
+        header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 0 2rem;
+          height: 58px;
+          background: var(--surface);
+          border-bottom: 1px solid var(--border);
+          position: sticky;
+          top: 0;
+          z-index: 100;
+        }
+
+        .logo {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          font-family: 'DM Mono', monospace;
+          font-weight: 500;
+          font-size: 14px;
+          letter-spacing: 0.04em;
+          color: var(--accent);
+        }
+
+        .logo-dot {
+          width: 8px; height: 8px;
+          background: var(--accent);
+          border-radius: 50%;
+          animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50%       { opacity: 0.35; transform: scale(0.75); }
+        }
+
+        .header-right {
+          display: flex;
+          align-items: center;
+          gap: 1.5rem;
+          font-family: 'DM Mono', monospace;
+          font-size: 11px;
+          color: var(--muted);
+        }
+
+        .live-badge {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          color: var(--green);
+          font-size: 11px;
+          background: var(--green-bg);
+          padding: 4px 10px;
+          border-radius: 20px;
+          border: 1px solid var(--green-bd);
+        }
+
+        .live-dot {
+          width: 6px; height: 6px;
+          background: var(--green);
+          border-radius: 50%;
+          animation: pulse 1.5s infinite;
+        }
+
+        /* Layout */
+        .main {
+          padding: 1.75rem 2rem;
+          max-width: 1400px;
+          margin: 0 auto;
+        }
+
+        .page-title {
+          font-size: 20px;
+          font-weight: 600;
+          color: var(--text);
+          margin-bottom: 0.25rem;
+        }
+
+        .page-sub {
+          font-size: 13px;
+          color: var(--muted);
+          margin-bottom: 1.5rem;
+        }
+
+        /* Stats */
+        .stats-row {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 1rem;
+          margin-bottom: 1.5rem;
+        }
+
+        .stat-card {
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          padding: 1.25rem 1.5rem;
+          display: flex;
+          align-items: flex-start;
+          gap: 1rem;
+          transition: box-shadow 0.2s;
+        }
+
+        .stat-card:hover {
+          box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+        }
+
+        .stat-icon {
+          width: 40px; height: 40px;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 18px;
+          flex-shrink: 0;
+        }
+
+        .stat-icon.blue     { background: var(--blue-bg); }
+        .stat-icon.amber    { background: var(--amber-bg); }
+        .stat-icon.red      { background: var(--critical-bg); }
+        .stat-icon.green    { background: var(--green-bg); }
+
+        .stat-content {}
+
+        .stat-label {
+          font-size: 12px;
+          color: var(--muted);
+          font-weight: 500;
+          margin-bottom: 4px;
+        }
+
+        .stat-value {
+          font-family: 'DM Mono', monospace;
+          font-size: 1.9rem;
+          font-weight: 500;
+          line-height: 1;
+          margin-bottom: 4px;
+        }
+
+        .stat-value.blue  { color: var(--blue); }
+        .stat-value.amber { color: var(--amber); }
+        .stat-value.red   { color: var(--critical); }
+        .stat-value.green { color: var(--green); }
+
+        .stat-sub { font-size: 11px; color: var(--muted); }
+
+        /* Toolbar */
+        .toolbar {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          margin-bottom: 1rem;
+        }
+
+        .filter-btn {
+          font-family: 'DM Mono', monospace;
+          font-size: 11px;
+          letter-spacing: 0.04em;
+          padding: 6px 14px;
+          border-radius: 6px;
+          border: 1px solid var(--border);
+          background: var(--surface);
+          color: var(--muted);
+          cursor: pointer;
+          transition: all 0.15s;
+          font-weight: 500;
+        }
+
+        .filter-btn:hover {
+          border-color: var(--border2);
+          color: var(--text2);
+          background: var(--surface2);
+        }
+
+        .filter-btn.active {
+          background: var(--accent);
+          border-color: var(--accent);
+          color: #fff;
+        }
+
+        .refresh-btn {
+          margin-left: auto;
+          font-family: 'DM Mono', monospace;
+          font-size: 11px;
+          padding: 6px 14px;
+          border-radius: 6px;
+          border: 1px solid var(--border);
+          background: var(--surface);
+          color: var(--text2);
+          cursor: pointer;
+          transition: all 0.15s;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .refresh-btn:hover {
+          background: var(--surface2);
+          border-color: var(--border2);
+        }
+
+        /* Table */
+        .tickets-container {
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          overflow: hidden;
+          box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+        }
+
+        .tickets-header {
+          display: grid;
+          grid-template-columns: 56px 140px 1fr 110px 120px 200px;
+          padding: 0 1.5rem;
+          height: 40px;
+          align-items: center;
+          background: var(--surface2);
+          border-bottom: 1px solid var(--border);
+        }
+
+        .col-head {
+          font-family: 'DM Mono', monospace;
+          font-size: 10px;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: var(--muted);
+          font-weight: 500;
+        }
+
+        .ticket-row {
+          display: grid;
+          grid-template-columns: 56px 140px 1fr 110px 120px 200px;
+          padding: 0 1.5rem;
+          min-height: 62px;
+          align-items: center;
+          border-bottom: 1px solid var(--border);
+          cursor: pointer;
+          transition: background 0.12s;
+          animation: fadeIn 0.25s ease forwards;
+          opacity: 0;
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(3px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+
+        .ticket-row:last-child { border-bottom: none; }
+        .ticket-row:hover { background: var(--surface2); }
+
+        .ticket-id {
+          font-family: 'DM Mono', monospace;
+          font-size: 12px;
+          color: var(--muted);
+          font-weight: 500;
+        }
+
+        .service-badge {
+          font-family: 'DM Mono', monospace;
+          font-size: 11px;
+          padding: 4px 9px;
+          border-radius: 6px;
+          background: var(--accent-bg);
+          color: var(--accent);
+          border: 1px solid var(--blue-bd);
+          display: inline-block;
+          font-weight: 500;
+        }
+
+        .ticket-problem {
+          font-size: 13px;
+          color: var(--text);
+          line-height: 1.45;
+          padding-right: 1rem;
+          font-weight: 400;
+        }
+
+        .ticket-problem small {
+          display: block;
+          font-size: 11px;
+          color: var(--muted);
+          margin-top: 3px;
+          font-family: 'DM Mono', monospace;
+        }
+
+        .severity-badge {
+          font-family: 'DM Mono', monospace;
+          font-size: 10px;
+          font-weight: 500;
+          letter-spacing: 0.05em;
+          padding: 4px 9px;
+          border-radius: 6px;
+          display: inline-block;
+        }
+
+        .sev-CRITICAL { background: var(--critical-bg); color: var(--critical); border: 1px solid var(--critical-bd); }
+        .sev-HIGH     { background: var(--high-bg);     color: var(--high);     border: 1px solid var(--high-bd); }
+        .sev-MEDIUM   { background: var(--medium-bg);   color: var(--medium);   border: 1px solid var(--medium-bd); }
+        .sev-LOW      { background: var(--low-bg);      color: var(--low);      border: 1px solid var(--low-bd); }
+
+        .status-badge {
+          font-family: 'DM Mono', monospace;
+          font-size: 10px;
+          letter-spacing: 0.05em;
+          padding: 4px 9px;
+          border-radius: 6px;
+          display: inline-block;
+          font-weight: 500;
+        }
+
+        .stat-OPEN     { background: var(--amber-bg);  color: var(--amber);  border: 1px solid var(--amber-bd); }
+        .stat-APPROVED { background: var(--green-bg);  color: var(--green);  border: 1px solid var(--green-bd); }
+        .stat-REJECTED { background: var(--slate-bg);  color: var(--slate);  border: 1px solid var(--slate-bd); }
+        .stat-DEPLOYED { background: var(--blue-bg);   color: var(--blue);   border: 1px solid var(--blue-bd); }
+
+        .affected-col {
+          font-size: 12px;
+          color: var(--text2);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .action-btns { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+
+        .btn-approve, .btn-reject, .btn-details {
+          font-family: 'DM Mono', monospace;
+          font-size: 10px;
+          padding: 5px 10px;
+          border-radius: 6px;
+          cursor: pointer;
+          font-weight: 500;
+          transition: all 0.15s;
+          border: none;
+          white-space: nowrap;
+        }
+
+        .btn-approve { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-bd); }
+        .btn-approve:hover { background: #d1fae5; }
+
+        .btn-reject { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-bd); }
+        .btn-reject:hover { background: #fee2e2; }
+
+        .btn-details { background: var(--surface2); color: var(--text2); border: 1px solid var(--border); }
+        .btn-details:hover { background: var(--bg); border-color: var(--border2); }
+
+        /* Empty / loader */
+        .empty-state {
+          padding: 4rem;
+          text-align: center;
+          color: var(--muted);
+          font-size: 13px;
+        }
+
+        .empty-state span { display: block; font-size: 2rem; margin-bottom: 1rem; opacity: 0.25; }
+
+        .loader {
+          display: flex;
+          gap: 6px;
+          align-items: center;
+          justify-content: center;
+          padding: 3rem;
+        }
+
+        .loader-dot {
+          width: 7px; height: 7px;
+          background: var(--border2);
+          border-radius: 50%;
+          animation: bounce 0.8s infinite;
+        }
+        .loader-dot:nth-child(2) { animation-delay: 0.15s; }
+        .loader-dot:nth-child(3) { animation-delay: 0.3s; }
+
+        @keyframes bounce {
+          0%, 100% { transform: translateY(0); opacity: 0.4; }
+          50%       { transform: translateY(-6px); opacity: 1; background: var(--accent); }
+        }
+
+        /* Modal */
+        .modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(15, 23, 42, 0.4);
+          z-index: 500;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 2rem;
+          backdrop-filter: blur(3px);
+          animation: fadeOverlay 0.2s ease;
+        }
+
+        @keyframes fadeOverlay {
+          from { opacity: 0; } to { opacity: 1; }
+        }
+
+        .modal {
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          width: 100%;
+          max-width: 780px;
+          max-height: 87vh;
+          overflow-y: auto;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+          animation: slideUp 0.2s ease;
+        }
+
+        @keyframes slideUp {
+          from { transform: translateY(16px); opacity: 0; }
+          to   { transform: translateY(0);    opacity: 1; }
+        }
+
+        .modal-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 1.25rem 1.5rem;
+          border-bottom: 1px solid var(--border);
+          position: sticky;
+          top: 0;
+          background: var(--surface);
+          border-radius: 12px 12px 0 0;
+        }
+
+        .modal-title {
+          font-size: 15px;
+          font-weight: 600;
+          color: var(--text);
+        }
+
+        .modal-title span {
+          font-family: 'DM Mono', monospace;
+          font-size: 12px;
+          color: var(--accent);
+          margin-right: 8px;
+        }
+
+        .modal-close {
+          background: var(--surface2);
+          border: 1px solid var(--border);
+          color: var(--muted);
+          width: 28px; height: 28px;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 14px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.15s;
+        }
+        .modal-close:hover { background: var(--bg); color: var(--text); }
+
+        .modal-body { padding: 1.5rem; }
+
+        .detail-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr 1fr 1fr;
+          gap: 1rem;
+          margin-bottom: 1.25rem;
+          padding-bottom: 1.25rem;
+          border-bottom: 1px solid var(--border);
+        }
+
+        .detail-item {}
+
+        .detail-label {
+          font-size: 11px;
+          font-weight: 500;
+          color: var(--muted);
+          text-transform: uppercase;
+          letter-spacing: 0.07em;
+          margin-bottom: 6px;
+        }
+
+        .detail-section {
+          margin-bottom: 1.25rem;
+        }
+
+        .detail-value {
+          font-size: 13px;
+          color: var(--text2);
+          line-height: 1.6;
+          background: var(--surface2);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          padding: 0.75rem 1rem;
+        }
+
+        .code-block {
+          font-family: 'DM Mono', monospace;
+          font-size: 12px;
+          color: #1e40af;
+          background: #f0f6ff;
+          border: 1px solid var(--blue-bd);
+          border-radius: 8px;
+          padding: 1rem;
+          overflow-x: auto;
+          white-space: pre;
+          line-height: 1.65;
+        }
+
+        .audit-row {
+          display: flex;
+          gap: 1rem;
+          font-size: 12px;
+          padding: 0.6rem 0;
+          border-bottom: 1px solid var(--border);
+          align-items: flex-start;
+        }
+
+        .audit-row:last-child { border-bottom: none; }
+
+        .audit-time { font-family: 'DM Mono', monospace; color: var(--muted); min-width: 155px; font-size: 11px; }
+        .audit-action { font-family: 'DM Mono', monospace; color: var(--accent); min-width: 80px; font-size: 11px; font-weight: 500; }
+        .audit-by { color: var(--muted); min-width: 70px; }
+        .audit-notes { color: var(--text2); flex: 1; }
+
+        .modal-actions {
+          display: flex;
+          gap: 0.75rem;
+          padding-top: 1.25rem;
+          border-top: 1px solid var(--border);
+          margin-top: 0.5rem;
+        }
+
+        .btn-lg {
+          font-family: 'DM Mono', monospace;
+          font-size: 12px;
+          font-weight: 500;
+          padding: 9px 20px;
+          border-radius: 8px;
+          cursor: pointer;
+          transition: all 0.15s;
+          border: none;
+        }
+
+        .btn-lg-approve { background: var(--green); color: #fff; }
+        .btn-lg-approve:hover { background: #047857; }
+
+        .btn-lg-reject { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-bd) !important; }
+        .btn-lg-reject:hover { background: #fee2e2; }
+
+        /* Toast */
+        .toast {
+          position: fixed;
+          bottom: 2rem;
+          right: 2rem;
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          padding: 0.8rem 1.25rem;
+          font-family: 'DM Mono', monospace;
+          font-size: 12px;
+          color: var(--text);
+          z-index: 9999;
+          box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+          animation: toastIn 0.25s ease;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          border-left-width: 3px;
+        }
+
+        @keyframes toastIn {
+          from { transform: translateY(12px); opacity: 0; }
+          to   { transform: translateY(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="logo">
+        <div class="logo-dot"></div>
+        LOGSENTINEL
+    </div>
+    <div class="header-right">
+        <div class="live-badge">
+            <div class="live-dot"></div>
+            LIVE
+        </div>
+        <span id="clock" style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)"></span>
+    </div>
+</header>
+
+<div class="main">
+
+    <div class="page-title">Ticket Dashboard</div>
+    <div class="page-sub">AI-generated tickets from live bank service log analysis</div>
+
+    <!-- Stats -->
+    <div class="stats-row">
+        <div class="stat-card">
+            <div class="stat-icon blue">📋</div>
+            <div class="stat-content">
+                <div class="stat-label">Total Tickets</div>
+                <div class="stat-value blue" id="stat-total">—</div>
+                <div class="stat-sub">all time</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon amber">🔔</div>
+            <div class="stat-content">
+                <div class="stat-label">Open</div>
+                <div class="stat-value amber" id="stat-open">—</div>
+                <div class="stat-sub">awaiting review</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon red">⚠️</div>
+            <div class="stat-content">
+                <div class="stat-label">Critical</div>
+                <div class="stat-value red" id="stat-critical">—</div>
+                <div class="stat-sub">immediate action</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon green">✅</div>
+            <div class="stat-content">
+                <div class="stat-label">Resolved</div>
+                <div class="stat-value green" id="stat-resolved">—</div>
+                <div class="stat-sub">approved + deployed</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+        <button class="filter-btn active" onclick="setFilter('ALL', this)">All</button>
+        <button class="filter-btn" onclick="setFilter('OPEN', this)">Open</button>
+        <button class="filter-btn" onclick="setFilter('APPROVED', this)">Approved</button>
+        <button class="filter-btn" onclick="setFilter('REJECTED', this)">Rejected</button>
+        <button class="filter-btn" onclick="setFilter('DEPLOYED', this)">Deployed</button>
+        <button class="refresh-btn" onclick="loadTickets()">↻ Refresh</button>
+    </div>
+
+    <!-- Table -->
+    <div class="tickets-container">
+        <div class="tickets-header">
+            <span class="col-head">#</span>
+            <span class="col-head">Service</span>
+            <span class="col-head">Problem</span>
+            <span class="col-head">Severity</span>
+            <span class="col-head">Status</span>
+            <span class="col-head">Actions</span>
+        </div>
+        <div id="tickets-body">
+            <div class="loader">
+                <div class="loader-dot"></div>
+                <div class="loader-dot"></div>
+                <div class="loader-dot"></div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<div id="modal" style="display:none"></div>
+
+<script>
+    const API = 'http://localhost:8080/api/tickets';
+    let allTickets = [];
+    let currentFilter = 'ALL';
+
+    function updateClock() {
+      document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-GB', { hour12: false }) + ' UTC';
+    }
+    updateClock();
+    setInterval(updateClock, 1000);
+    setInterval(loadTickets, 15000);
+
+    async function loadTickets() {
+      try {
+        const res = await fetch(API);
+        allTickets = await res.json();
+        updateStats();
+        renderTickets();
+      } catch(e) {
+        document.getElementById('tickets-body').innerHTML =
+          '<div class="empty-state"><span>⚡</span>Cannot reach API at localhost:8080<br>Make sure Spring Boot is running.</div>';
+      }
+    }
+
+    function updateStats() {
+      document.getElementById('stat-total').textContent    = allTickets.length;
+      document.getElementById('stat-open').textContent     = allTickets.filter(t => t.status === 'OPEN').length;
+      document.getElementById('stat-critical').textContent = allTickets.filter(t => t.severity === 'CRITICAL').length;
+      document.getElementById('stat-resolved').textContent = allTickets.filter(t => t.status === 'APPROVED' || t.status === 'DEPLOYED').length;
+    }
+
+    function setFilter(f, btn) {
+      currentFilter = f;
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderTickets();
+    }
+
+    function renderTickets() {
+      const filtered = currentFilter === 'ALL'
+        ? allTickets
+        : allTickets.filter(t => t.status === currentFilter);
+
+      if (filtered.length === 0) {
+        document.getElementById('tickets-body').innerHTML =
+          '<div class="empty-state"><span>◎</span>No tickets found.</div>';
+        return;
+      }
+
+      document.getElementById('tickets-body').innerHTML = filtered
+        .sort((a, b) => b.id - a.id)
+        .map((t, i) => `
+          <div class="ticket-row" style="animation-delay:${i * 35}ms">
+            <span class="ticket-id">#${t.id}</span>
+            <span><span class="service-badge">${t.serviceName || '—'}</span></span>
+            <span class="ticket-problem">
+              ${t.problem || '—'}
+              ${t.eta ? `<small>⏱ ETA: ${t.eta}</small>` : ''}
+            </span>
+            <span><span class="severity-badge sev-${t.severity}">${t.severity || '—'}</span></span>
+            <span><span class="status-badge stat-${t.status}">${t.status}</span></span>
+            <span class="action-btns">
+              ${t.status === 'OPEN' ? `
+                <button class="btn-approve" onclick="approveTicket(${t.id},event)">Approve</button>
+                <button class="btn-reject"  onclick="rejectTicket(${t.id},event)">Reject</button>
+              ` : ''}
+              <button class="btn-details" onclick="openModal(${t.id},event)">Details</button>
+            </span>
+          </div>
+        `).join('');
+    }
+
+    function trunc(str, len) {
+      if (!str) return '—';
+      return str.length > len ? str.slice(0, len) + '…' : str;
+    }
+
+    async function openModal(id, e) {
+      e && e.stopPropagation();
+      const t = allTickets.find(x => x.id === id);
+      if (!t) return;
+
+      let fixHtml = '<div class="detail-value" style="color:var(--muted);font-style:italic;font-size:12px">No code fix attached to this ticket.</div>';
+      try {
+        const r = await fetch(`${API}/${id}/fix`);
+        if (r.ok) {
+          const fix = await r.json();
+          fixHtml = `
+            <div class="detail-section">
+              <div class="detail-label">File</div>
+              <div class="detail-value" style="font-family:'DM Mono',monospace;font-size:12px">${fix.filePath || '—'}</div>
+            </div>
+            <div class="detail-section">
+              <div class="detail-label">Patch</div>
+              <div class="code-block">${esc(fix.patch || '—')}</div>
+            </div>
+            <div class="detail-section">
+              <div class="detail-label">Explanation</div>
+              <div class="detail-value">${fix.explanation || '—'}</div>
+            </div>`;
+        }
+      } catch(e) {}
+
+      let auditHtml = '';
+      try {
+        const r = await fetch(`${API}/${id}/audit`);
+        if (r.ok) {
+          const audit = await r.json();
+          if (audit.length) {
+            auditHtml = `
+              <div class="detail-section">
+                <div class="detail-label">Audit Trail</div>
+                <div class="detail-value" style="padding:0">
+                  ${audit.map(a => `
+                    <div class="audit-row">
+                      <span class="audit-time">${new Date(a.createdAt).toLocaleString('en-GB')}</span>
+                      <span class="audit-action">${a.action}</span>
+                      <span class="audit-by">${a.performedBy}</span>
+                      <span class="audit-notes">${a.notes || ''}</span>
+                    </div>`).join('')}
+                </div>
+              </div>`;
+          }
+        }
+      } catch(e) {}
+
+      const modal = document.getElementById('modal');
+      modal.style.display = 'flex';
+      modal.className = 'modal-overlay';
+      modal.innerHTML = `
+        <div class="modal">
+          <div class="modal-header">
+            <div class="modal-title">
+              <span>#${t.id}</span>${t.problem || 'Ticket Detail'}
+            </div>
+            <button class="modal-close" onclick="closeModal()">✕</button>
+          </div>
+          <div class="modal-body">
+            <div class="detail-grid">
+              <div class="detail-item">
+                <div class="detail-label">Service</div>
+                <span class="service-badge">${t.serviceName || '—'}</span>
+              </div>
+              <div class="detail-item">
+                <div class="detail-label">Severity</div>
+                <span class="severity-badge sev-${t.severity}">${t.severity}</span>
+              </div>
+              <div class="detail-item">
+                <div class="detail-label">Status</div>
+                <span class="status-badge stat-${t.status}">${t.status}</span>
+              </div>
+              <div class="detail-item">
+                <div class="detail-label">ETA</div>
+                <div style="font-family:'DM Mono',monospace;font-size:12px;color:var(--text2)">${t.eta || '—'}</div>
+              </div>
+            </div>
+
+            <div class="detail-section">
+              <div class="detail-label">Root Cause</div>
+              <div class="detail-value">${t.rootCause || '—'}</div>
+            </div>
+
+            <div class="detail-section">
+              <div class="detail-label">Affected Users</div>
+              <div class="detail-value">${t.affectedUsers || '—'}</div>
+            </div>
+
+            <div class="detail-section">
+              <div class="detail-label">Recommended Fix</div>
+              <div class="detail-value">${t.recommendedFix || '—'}</div>
+            </div>
+
+            <div class="detail-section">
+              <div class="detail-label">AI Generated Code Fix</div>
+              ${fixHtml}
+            </div>
+
+            ${auditHtml}
+
+            ${t.status === 'OPEN' ? `
+            <div class="modal-actions">
+              <button class="btn-lg btn-lg-approve" onclick="approveTicket(${t.id})">✓ Approve & Queue for Staging</button>
+              <button class="btn-lg btn-lg-reject"  onclick="rejectTicket(${t.id})">✕ Reject</button>
+            </div>` : ''}
+          </div>
+        </div>`;
+
+      modal.onclick = e => { if (e.target === modal) closeModal(); };
+    }
+
+    function closeModal() {
+      document.getElementById('modal').style.display = 'none';
+    }
+
+    async function approveTicket(id, e) {
+      e && e.stopPropagation();
+      const engineer = prompt('Your name:', 'hasan') || 'anonymous';
+      try {
+        await fetch(`${API}/${id}/approve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ engineer })
+        });
+        showToast('Ticket approved and queued for staging', 'var(--green)');
+        closeModal();
+        loadTickets();
+      } catch(e) { showToast('Failed to approve ticket', 'var(--red)'); }
+    }
+
+    async function rejectTicket(id, e) {
+      e && e.stopPropagation();
+      const reason = prompt('Rejection reason:') || 'No reason provided';
+      try {
+        await fetch(`${API}/${id}/reject`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ engineer: 'hasan', reason })
+        });
+        showToast('Ticket rejected', 'var(--amber)');
+        closeModal();
+        loadTickets();
+      } catch(e) { showToast('Failed to reject ticket', 'var(--red)'); }
+    }
+
+    function showToast(msg, color) {
+      const t = document.createElement('div');
+      t.className = 'toast';
+      t.style.borderLeftColor = color;
+      t.textContent = msg;
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 3000);
+    }
+
+    function esc(s) {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+    loadTickets();
+</script>
+</body>
+</html>
