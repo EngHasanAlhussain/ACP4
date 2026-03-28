@@ -34,6 +34,9 @@ public class Ticket {
     @Column(nullable = false)
     private String status = "OPEN";
 
+    @Column(name = "fix_type")
+    private String fixType;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt = LocalDateTime.now();
 
@@ -45,6 +48,9 @@ public class Ticket {
 
     public String getPrUrl() { return prUrl; }
     public void setPrUrl(String prUrl) { this.prUrl = prUrl; }
+
+    public String getFixType() { return fixType; }
+    public void setFixType(String fixType) { this.fixType = fixType; }
 
     public Ticket() {}
 

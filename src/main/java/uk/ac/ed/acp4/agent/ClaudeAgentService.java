@@ -59,19 +59,31 @@ public class ClaudeAgentService {
 
         sb.append("""
 
-                Analyze these logs and respond ONLY with a valid JSON object (no markdown, no explanation outside JSON):
+                Analyze these logs carefully. The issue may be a code bug, a configuration problem,
+                a database issue, a third-party/external dependency failure, or something requiring
+                further investigation. Do not assume every issue requires a code change.
+
+                Respond ONLY with a valid JSON object (no markdown, no explanation outside JSON):
                 {
                   "serviceName": "name of the service",
                   "problem": "clear one-line description of the problem",
                   "rootCause": "detailed root cause explanation",
                   "severity": "LOW|MEDIUM|HIGH|CRITICAL",
-                  "recommendedFix": "step by step fix instructions",
+                  "fixType": "CODE_CHANGE|CONFIG_CHANGE|DB_OPERATION|EXTERNAL|INVESTIGATION",
+                  "recommendedFix": "step by step fix instructions appropriate for the fixType",
                   "eta": "estimated time to resolve e.g. 2 hours",
                   "affectedUsers": "description of who is affected",
-                  "codeFilePath": "the exact filename in the repo e.g. CardService.java",
-                  "codePatch": "the FULL corrected file content (not a diff, the complete file)",
-                  "codeExplanation": "why this code change fixes the problem"
+                  "codeFilePath": "the file to change, or null if fixType is not CODE_CHANGE",
+                  "codePatch": "the FULL corrected file content if fixType is CODE_CHANGE, otherwise null",
+                  "codeExplanation": "explanation of the fix, or null if fixType is not CODE_CHANGE"
                 }
+
+                Fix type guidance:
+                - CODE_CHANGE: the bug is clearly in the application source code
+                - CONFIG_CHANGE: the issue is a misconfigured environment variable, timeout, or property
+                - DB_OPERATION: the fix requires running a database query or migration
+                - EXTERNAL: the issue is with a third-party API, vendor, or upstream service outside our control
+                - INVESTIGATION: not enough information to determine root cause — escalate to engineer
 
                 Only respond with the JSON. No other text.
                 """);

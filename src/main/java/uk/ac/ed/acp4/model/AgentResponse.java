@@ -44,4 +44,9 @@ public class AgentResponse {
 
     public String getCodeExplanation() { return codeExplanation; }
     public void setCodeExplanation(String codeExplanation) { this.codeExplanation = codeExplanation; }
+
+    private String fixType; // CODE_CHANGE, CONFIG_CHANGE, DB_OPERATION, EXTERNAL, INVESTIGATION
+
+    public String getFixType() { return fixType; }
+    public void setFixType(String fixType) { this.fixType = fixType; }
 }
