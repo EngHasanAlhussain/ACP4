@@ -13,10 +13,20 @@ public class AgentResponse {
     private String codePatch;
     private String codeExplanation;
 
+    private String sqlScript;
+    private String sqlExplanation;
+
     public AgentResponse() {}
 
     public String getServiceName() { return serviceName; }
     public void setServiceName(String serviceName) { this.serviceName = serviceName; }
+
+
+    public String getSqlScript() { return sqlScript; }
+    public void setSqlScript(String sqlScript) { this.sqlScript = sqlScript; }
+
+    public String getSqlExplanation() { return sqlExplanation; }
+    public void setSqlExplanation(String sqlExplanation) { this.sqlExplanation = sqlExplanation; }
 
     public String getProblem() { return problem; }
     public void setProblem(String problem) { this.problem = problem; }

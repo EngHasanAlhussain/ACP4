@@ -816,7 +816,7 @@
             <span><span class="service-badge">${t.serviceName || '—'}</span></span>
             <span class="ticket-problem">
               ${t.problem || '—'}
-              ${t.eta ? `<small>⏱ ETA: ${t.eta}</small>` : ''}
+              ${t.createdAt ? `<small>🕐 ${new Date(t.createdAt).toLocaleString('en-GB')}</small>` : ''}
             </span>
             <span><span class="severity-badge sev-${t.severity}">${t.severity || '—'}</span></span>
             <span><span class="status-badge stat-${t.status}">${t.status}</span></span>
@@ -844,27 +844,6 @@
       e && e.stopPropagation();
       const t = allTickets.find(x => x.id === id);
       if (!t) return;
-
-      let fixHtml = '<div class="detail-value" style="color:var(--muted);font-style:italic;font-size:12px">No code fix attached to this ticket.</div>';
-      try {
-        const r = await fetch(`${API}/${id}/fix`);
-        if (r.ok) {
-          const fix = await r.json();
-          fixHtml = `
-            <div class="detail-section">
-              <div class="detail-label">File</div>
-              <div class="detail-value" style="font-family:'DM Mono',monospace;font-size:12px">${fix.filePath || '—'}</div>
-            </div>
-            <div class="detail-section">
-              <div class="detail-label">Patch</div>
-              <div class="code-block">${esc(fix.patch || '—')}</div>
-            </div>
-            <div class="detail-section">
-              <div class="detail-label">Explanation</div>
-              <div class="detail-value">${fix.explanation || '—'}</div>
-            </div>`;
-        }
-      } catch(e) {}
 
       let auditHtml = '';
       try {
@@ -940,7 +919,16 @@
 
             <div class="detail-section">
               <div class="detail-label">Affected Users</div>
-              <div class="detail-value">${t.affectedUsers || '—'}</div>
+              <div class="detail-value" style="padding:0.75rem 1rem">
+                ${(() => {
+                  const users = (t.affectedUsers || '').split(',').map(u => u.trim()).filter(u => u.match(/USR\d+/));
+                  if (!users.length) return '<span style="color:var(--muted);font-size:13px">No specific users identified</span>';
+                  return `<div style="margin-bottom:8px;font-size:12px;color:var(--muted)">${users.length} user${users.length > 1 ? 's' : ''} affected</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px">
+                      ${users.map(u => `<span style="font-family:'DM Mono',monospace;font-size:11px;background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);padding:3px 10px;border-radius:20px">${u}</span>`).join('')}
+                    </div>`;
+                })()}
+              </div>
             </div>
 
             <div class="detail-section">
@@ -949,8 +937,37 @@
             </div>
 
             <div class="detail-section">
-              <div class="detail-label">AI Generated Code Fix</div>
-              ${fixHtml}
+              <div class="detail-label">AI Generated Fix</div>
+              ${await (async () => {
+                if (t.fixType === 'CODE_CHANGE') {
+                  try {
+                    const r = await fetch(\`${API}/\${id}/fix\`);
+                    if (r.ok) {
+                      const fix = await r.json();
+                      return \`
+                        <div style="margin-bottom:8px;font-size:12px;color:var(--text2)">\${fix.explanation || ''}</div>
+                        <div class="detail-label" style="margin-bottom:6px">File: \${fix.filePath || '—'}</div>
+                        <div class="code-block">\${esc(fix.patch || '—')}</div>\`;
+                    }
+                  } catch(e) {}
+                  return '<div class="detail-value" style="color:var(--muted);font-size:12px">No code fix attached.</div>';
+                }
+                if (t.fixType === 'DB_OPERATION') {
+                  try {
+                    const r = await fetch(\`${API}/\${id}/sqlfix\`);
+                    if (r.ok) {
+                      const fix = await r.json();
+                      const statusColor = fix.status === 'EXECUTED' ? 'var(--green)' : fix.status === 'FAILED' ? 'var(--red)' : 'var(--amber)';
+                      return \`
+                        <div style="margin-bottom:8px;font-size:12px;color:var(--text2)">\${fix.explanation || ''}</div>
+                        <div class="code-block" style="background:#f5f3ff;color:#4c1d95;border-color:#ddd6fe">\${esc(fix.sqlScript || '—')}</div>
+                        \${fix.result ? \`<div style="margin-top:8px;font-size:12px;padding:8px 12px;background:var(--surface2);border-radius:6px;border:1px solid var(--border)"><span style="color:\${statusColor};font-weight:500">\${fix.status}</span> — \${fix.result}</div>\` : ''}\`;
+                    }
+                  } catch(e) {}
+                  return '<div class="detail-value" style="color:var(--muted);font-size:12px">No SQL fix attached.</div>';
+                }
+                return \`<div class="detail-value">\${t.recommendedFix || '—'}</div>\`;
+              })()}
             </div>
 
             ${auditHtml}

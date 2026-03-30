@@ -72,17 +72,19 @@ public class ClaudeAgentService {
                   "fixType": "CODE_CHANGE|CONFIG_CHANGE|DB_OPERATION|EXTERNAL|INVESTIGATION",
                   "recommendedFix": "step by step fix instructions appropriate for the fixType",
                   "eta": "estimated time to resolve e.g. 2 hours",
-                  "affectedUsers": "description of who is affected",
+                  "affectedUsers": "comma-separated list of affected user IDs found in logs e.g. USR1234, USR5678. If no specific users identified, return empty string",
                   "codeFilePath": "the file to change, or null if fixType is not CODE_CHANGE",
                   "codePatch": "the FULL corrected file content if fixType is CODE_CHANGE, otherwise null",
-                  "codeExplanation": "explanation of the fix, or null if fixType is not CODE_CHANGE"
+                  "codeExplanation": "explanation of the code fix, or null if fixType is not CODE_CHANGE",
+                  "sqlScript": "a safe SQL script (INSERT/UPDATE/SELECT only) if fixType is DB_OPERATION, otherwise null. Use schema prefix bank. e.g. INSERT INTO bank.reference_data (type, value) VALUES ('city', 'Edinburgh')",
+                  "sqlExplanation": "explanation of what the SQL does and why it fixes the problem, or null if fixType is not DB_OPERATION"
                 }
 
                 Fix type guidance:
                 - CODE_CHANGE: the bug is clearly in the application source code
                 - CONFIG_CHANGE: the issue is a misconfigured environment variable, timeout, or property
-                - DB_OPERATION: the fix requires running a database query or migration
-                - EXTERNAL: the issue is with a third-party API, vendor, or upstream service outside our control
+                - DB_OPERATION: the fix requires running a database query — e.g. missing reference data, wrong config value in DB
+                - EXTERNAL: the issue is with a third-party API or upstream service outside our control
                 - INVESTIGATION: not enough information to determine root cause — escalate to engineer
 
                 Only respond with the JSON. No other text.

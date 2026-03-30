@@ -11,12 +11,16 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
 import uk.ac.ed.acp4.agent.ClaudeAgentService;
 import uk.ac.ed.acp4.model.AgentResponse;
+import uk.ac.ed.acp4.ticket.TicketService;
 
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @Service
 public class LogConsumerService {
@@ -26,34 +30,38 @@ public class LogConsumerService {
     private final ClaudeAgentService agentService;
     private final RabbitTemplate rabbitTemplate;
     private final RedisTemplate<String, String> redisTemplate;
+    private final TicketService ticketService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @Value("${app.log.batch-size}")
+    @Value("${app.log.batch-size:20}")
     private int batchSize;
 
-    @Value("${app.dedup.ttl-seconds}")
+    @Value("${app.dedup.ttl-seconds:1800}")
     private long dedupTtlSeconds;
 
     @Value("${app.rabbitmq.queue}")
     private String ticketQueue;
 
     private final Map<String, List<String>> errorBuffer = new ConcurrentHashMap<>();
+    private static final Pattern USER_PATTERN = Pattern.compile("USR\\d+");
 
     public LogConsumerService(ClaudeAgentService agentService,
                               RabbitTemplate rabbitTemplate,
-                              RedisTemplate<String, String> redisTemplate) {
+                              RedisTemplate<String, String> redisTemplate,
+                              TicketService ticketService) {
         this.agentService = agentService;
         this.rabbitTemplate = rabbitTemplate;
         this.redisTemplate = redisTemplate;
+        this.ticketService = ticketService;
     }
 
     @KafkaListener(topics = "bank-logs", groupId = "${spring.kafka.consumer.group-id}")
     public void consume(String message) {
         try {
             JsonNode logNode = objectMapper.readTree(message);
-            String level   = logNode.path("level").asText();
-            String service = logNode.path("service").asText();
-            String text    = logNode.path("message").asText();
+            String level     = logNode.path("level").asText();
+            String service   = logNode.path("service").asText();
+            String text      = logNode.path("message").asText();
             String timestamp = logNode.path("timestamp").asText();
 
             if (!level.equals("ERROR") && !level.equals("WARN")) return;
@@ -74,16 +82,26 @@ public class LogConsumerService {
     }
 
     private void processBatch(String serviceName, List<String> logLines) {
-        String dedupKey = "dedup:" + serviceName + ":" + extractErrorKey(logLines);
+        // One ticket per service per TTL window — simple and reliable
+        String dedupKey = "dedup:" + serviceName;
 
         Boolean alreadySeen = redisTemplate.hasKey(dedupKey);
+
         if (Boolean.TRUE.equals(alreadySeen)) {
-            log.info("Duplicate error pattern for {} — skipping", serviceName);
+            List<String> newUsers = extractUserIds(logLines);
+            if (!newUsers.isEmpty()) {
+                ticketService.findOpenTicketByService(serviceName).ifPresent(ticket -> {
+                    ticketService.appendAffectedUsers(ticket.getId(), newUsers);
+                    log.info("Appended {} users to ticket #{} for {}",
+                            newUsers.size(), ticket.getId(), serviceName);
+                });
+            }
             return;
         }
 
+        // New window — mark immediately before any async work
         redisTemplate.opsForValue().set(dedupKey, "1", Duration.ofSeconds(dedupTtlSeconds));
-        log.info("Sending {} error logs from {} to AI agent", logLines.size(), serviceName);
+        log.info("New error window for {}. Sending {} lines to AI.", serviceName, logLines.size());
 
         AgentResponse response = agentService.analyze(serviceName, logLines);
 
@@ -96,16 +114,19 @@ public class LogConsumerService {
                 log.error("Failed to publish to RabbitMQ: {}", e.getMessage());
             }
         } else {
-            log.warn("AI agent returned null for service: {}", serviceName);
+            log.warn("AI agent returned null for: {}", serviceName);
         }
     }
 
-    private String extractErrorKey(List<String> logLines) {
+    private List<String> extractUserIds(List<String> logLines) {
         return logLines.stream()
-                .filter(l -> l.contains("ERROR"))
-                .findFirst()
-                .map(l -> l.replaceAll("[^a-zA-Z]", ""))
-                .map(l -> l.substring(0, Math.min(20, l.length())))
-                .orElse("unknown");
+                .flatMap(line -> {
+                    Matcher m = USER_PATTERN.matcher(line);
+                    List<String> found = new ArrayList<>();
+                    while (m.find()) found.add(m.group());
+                    return found.stream();
+                })
+                .distinct()
+                .collect(Collectors.toList());
     }
 }

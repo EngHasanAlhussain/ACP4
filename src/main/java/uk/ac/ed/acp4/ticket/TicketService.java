@@ -9,11 +9,16 @@ import uk.ac.ed.acp4.github.GitHubService;
 import uk.ac.ed.acp4.model.AgentResponse;
 import uk.ac.ed.acp4.model.AuditLog;
 import uk.ac.ed.acp4.model.CodeFix;
+import uk.ac.ed.acp4.model.SqlFix;
 import uk.ac.ed.acp4.model.Ticket;
 
 import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class TicketService {
@@ -22,18 +27,24 @@ public class TicketService {
 
     private final TicketRepository ticketRepository;
     private final CodeFixRepository codeFixRepository;
+    private final SqlFixRepository sqlFixRepository;
     private final AuditLogRepository auditLogRepository;
     private final GitHubService gitHubService;
+    private final SqlExecutionService sqlExecutionService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public TicketService(TicketRepository ticketRepository,
                          CodeFixRepository codeFixRepository,
+                         SqlFixRepository sqlFixRepository,
                          AuditLogRepository auditLogRepository,
-                         GitHubService gitHubService) {
+                         GitHubService gitHubService,
+                         SqlExecutionService sqlExecutionService) {
         this.ticketRepository = ticketRepository;
         this.codeFixRepository = codeFixRepository;
+        this.sqlFixRepository = sqlFixRepository;
         this.auditLogRepository = auditLogRepository;
         this.gitHubService = gitHubService;
+        this.sqlExecutionService = sqlExecutionService;
     }
 
     @RabbitListener(queues = "${app.rabbitmq.queue}")
@@ -58,9 +69,10 @@ public class TicketService {
         ticket.setAffectedUsers(response.getAffectedUsers());
         ticket.setStatus("OPEN");
         ticket = ticketRepository.save(ticket);
-        log.info("Ticket #{} created for {} — fixType: {}", ticket.getId(), ticket.getServiceName(), ticket.getFixType());
+        log.info("Ticket #{} created for {} — fixType: {}",
+                ticket.getId(), ticket.getServiceName(), ticket.getFixType());
 
-        // Only save code fix if it's actually a code change
+        // Save code fix for CODE_CHANGE
         if ("CODE_CHANGE".equals(response.getFixType()) &&
                 response.getCodePatch() != null && !response.getCodePatch().isBlank()) {
             CodeFix fix = new CodeFix();
@@ -73,6 +85,19 @@ public class TicketService {
             log.info("Code fix saved for ticket #{}", ticket.getId());
         }
 
+        // Save SQL fix for DB_OPERATION
+        if ("DB_OPERATION".equals(response.getFixType()) &&
+                response.getSqlScript() != null && !response.getSqlScript().isBlank()) {
+            SqlFix sqlFix = new SqlFix();
+            sqlFix.setTicketId(ticket.getId());
+            sqlFix.setSqlScript(response.getSqlScript());
+            sqlFix.setExplanation(response.getSqlExplanation() != null
+                    ? response.getSqlExplanation() : "AI-generated SQL fix");
+            sqlFix.setStatus("PENDING");
+            sqlFixRepository.save(sqlFix);
+            log.info("SQL fix saved for ticket #{}", ticket.getId());
+        }
+
         AuditLog audit = new AuditLog();
         audit.setTicketId(ticket.getId());
         audit.setAction("CREATED");
@@ -83,6 +108,46 @@ public class TicketService {
         return ticket;
     }
 
+    public Optional<Ticket> findOpenTicketByService(String serviceName) {
+        return ticketRepository
+                .findFirstByServiceNameAndStatusOrderByCreatedAtDesc(serviceName, "OPEN");
+    }
+
+    public void appendAffectedUsers(Long ticketId, List<String> newUserIds) {
+        ticketRepository.findById(ticketId).ifPresent(ticket -> {
+            Set<String> existing = new LinkedHashSet<>();
+            if (ticket.getAffectedUsers() != null && !ticket.getAffectedUsers().isBlank()) {
+                Arrays.stream(ticket.getAffectedUsers().split(","))
+                        .map(String::trim)
+                        .filter(s -> !s.isBlank())
+                        .forEach(existing::add);
+            }
+
+            int beforeCount = existing.size();
+            existing.addAll(newUserIds);
+            int added = existing.size() - beforeCount;
+
+            if (added == 0) {
+                log.info("Ticket #{} — no new unique users to append", ticketId);
+                return;
+            }
+
+            ticket.setAffectedUsers(String.join(", ", existing));
+            ticket.setUpdatedAt(LocalDateTime.now());
+            ticketRepository.save(ticket);
+
+            AuditLog audit = new AuditLog();
+            audit.setTicketId(ticketId);
+            audit.setAction("USERS_APPENDED");
+            audit.setPerformedBy("system");
+            audit.setNotes(added + " new user(s) added: " + String.join(", ", newUserIds));
+            auditLogRepository.save(audit);
+
+            log.info("Ticket #{} — {} new user(s) appended. Total: {}",
+                    ticketId, added, existing.size());
+        });
+    }
+
     public Ticket approveTicket(Long ticketId, String engineer) {
         Ticket ticket = ticketRepository.findById(ticketId)
                 .orElseThrow(() -> new RuntimeException("Ticket not found: " + ticketId));
@@ -91,20 +156,17 @@ public class TicketService {
         ticket.setUpdatedAt(LocalDateTime.now());
         ticketRepository.save(ticket);
 
-        // Only open a GitHub PR if this is a code change
-        if ("CODE_CHANGE".equals(ticket.getFixType())) {
-            codeFixRepository.findByTicketId(ticketId).ifPresent(fix -> {
+        switch (ticket.getFixType() != null ? ticket.getFixType() : "INVESTIGATION") {
+
+            case "CODE_CHANGE" -> codeFixRepository.findByTicketId(ticketId).ifPresent(fix -> {
                 fix.setStatus("APPROVED");
                 fix.setUpdatedAt(LocalDateTime.now());
                 codeFixRepository.save(fix);
 
                 String prUrl = gitHubService.createFixPullRequest(
-                        ticketId,
-                        ticket.getServiceName(),
-                        fix.getFilePath(),
-                        fix.getPatch(),
-                        ticket.getProblem(),
-                        fix.getExplanation()
+                        ticketId, ticket.getServiceName(),
+                        fix.getFilePath(), fix.getPatch(),
+                        ticket.getProblem(), fix.getExplanation()
                 );
 
                 if (prUrl != null) {
@@ -120,10 +182,31 @@ public class TicketService {
                     log.info("PR created for ticket #{}: {}", ticketId, prUrl);
                 }
             });
-        } else {
-            // For non-code fixes, just log the approval action
-            log.info("Ticket #{} approved ({}). No PR needed — action: {}",
-                    ticketId, ticket.getFixType(), ticket.getRecommendedFix());
+
+            case "DB_OPERATION" -> sqlFixRepository.findByTicketId(ticketId).ifPresent(sqlFix -> {
+                log.info("Executing SQL fix for ticket #{}:\n{}", ticketId, sqlFix.getSqlScript());
+
+                SqlExecutionService.SqlExecutionResult result =
+                        sqlExecutionService.execute(sqlFix.getSqlScript());
+
+                sqlFix.setStatus(result.isSuccess() ? "EXECUTED" : "FAILED");
+                sqlFix.setResult(result.getMessage());
+                sqlFix.setExecutedAt(LocalDateTime.now());
+                sqlFixRepository.save(sqlFix);
+
+                AuditLog sqlAudit = new AuditLog();
+                sqlAudit.setTicketId(ticketId);
+                sqlAudit.setAction(result.isSuccess() ? "SQL_EXECUTED" : "SQL_FAILED");
+                sqlAudit.setPerformedBy(engineer);
+                sqlAudit.setNotes(result.getMessage());
+                auditLogRepository.save(sqlAudit);
+
+                log.info("SQL fix for ticket #{} — {}: {}",
+                        ticketId, result.isSuccess() ? "SUCCESS" : "FAILED", result.getMessage());
+            });
+
+            default -> log.info("Ticket #{} approved ({}). Manual action required.",
+                    ticketId, ticket.getFixType());
         }
 
         AuditLog audit = new AuditLog();
@@ -141,7 +224,7 @@ public class TicketService {
         return switch (ticket.getFixType() != null ? ticket.getFixType() : "INVESTIGATION") {
             case "CODE_CHANGE"   -> "Approved — PR opened on GitHub for staging review";
             case "CONFIG_CHANGE" -> "Approved — configuration change to be applied by ops team";
-            case "DB_OPERATION"  -> "Approved — database operation queued for DBA review";
+            case "DB_OPERATION"  -> "Approved — SQL script executed against database";
             case "EXTERNAL"      -> "Approved — escalated to third-party vendor";
             default              -> "Approved — assigned for manual investigation";
         };
@@ -161,6 +244,11 @@ public class TicketService {
             codeFixRepository.save(fix);
         });
 
+        sqlFixRepository.findByTicketId(ticketId).ifPresent(fix -> {
+            fix.setStatus("REJECTED");
+            sqlFixRepository.save(fix);
+        });
+
         AuditLog audit = new AuditLog();
         audit.setTicketId(ticketId);
         audit.setAction("REJECTED");
@@ -176,5 +264,6 @@ public class TicketService {
     public List<Ticket> getTicketsByStatus(String status)   { return ticketRepository.findByStatus(status); }
     public Optional<Ticket> getTicketById(Long id)          { return ticketRepository.findById(id); }
     public Optional<CodeFix> getCodeFixByTicketId(Long id)  { return codeFixRepository.findByTicketId(id); }
+    public Optional<SqlFix> getSqlFixByTicketId(Long id)    { return sqlFixRepository.findByTicketId(id); }
     public List<AuditLog> getAuditLog(Long ticketId)        { return auditLogRepository.findByTicketIdOrderByCreatedAtDesc(ticketId); }
 }

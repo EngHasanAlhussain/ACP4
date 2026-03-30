@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import uk.ac.ed.acp4.model.AuditLog;
 import uk.ac.ed.acp4.model.CodeFix;
+import uk.ac.ed.acp4.model.SqlFix;
 import uk.ac.ed.acp4.model.Ticket;
 import uk.ac.ed.acp4.ticket.TicketService;
 
@@ -43,6 +44,13 @@ public class TicketController {
     @GetMapping("/{id}/fix")
     public ResponseEntity<CodeFix> getCodeFix(@PathVariable Long id) {
         return ticketService.getCodeFixByTicketId(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/{id}/sqlfix")
+    public ResponseEntity<SqlFix> getSqlFix(@PathVariable Long id) {
+        return ticketService.getSqlFixByTicketId(id)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
