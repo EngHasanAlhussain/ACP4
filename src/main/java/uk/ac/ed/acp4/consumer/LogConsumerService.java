@@ -80,28 +80,64 @@ public class LogConsumerService {
             log.error("Failed to process Kafka message: {}", e.getMessage());
         }
     }
+    private String extractFixTypeHint(List<String> logLines) {
+        boolean hasExternal = logLines.stream()
+                .anyMatch(l -> l.contains("EXTERNAL_CALL_FAILED"));
+        boolean hasDbIssue = logLines.stream()
+                .anyMatch(l -> l.contains("reference_data") || l.contains("CardCreationException"));
+        if (hasExternal) return "EXTERNAL";
+        if (hasDbIssue)  return "DB_OPERATION";
+        return "CODE_CHANGE";
+    }
 
     private void processBatch(String serviceName, List<String> logLines) {
-        // One ticket per service per TTL window — simple and reliable
-        String dedupKey = "dedup:" + serviceName;
+
+        // Split into external errors and code/other errors
+        List<String> externalLines = logLines.stream()
+                .filter(l -> l.contains("EXTERNAL_CALL_FAILED"))
+                .collect(Collectors.toList());
+
+        List<String> otherLines = logLines.stream()
+                .filter(l -> !l.contains("EXTERNAL_CALL_FAILED"))
+                .collect(Collectors.toList());
+
+        // Process external errors independently
+        if (externalLines.size() >= 2) {
+            processIndependentBatch(serviceName, externalLines, "EXTERNAL");
+        }
+
+        // Process code/db errors independently
+        if (otherLines.size() >= 5) {
+            processIndependentBatch(serviceName, otherLines, "CODE_CHANGE");
+        }
+    }
+
+    private void processIndependentBatch(String serviceName,
+                                         List<String> logLines,
+                                         String fixTypeHint) {
+        String dedupKey = "dedup:" + serviceName + ":" + fixTypeHint;
 
         Boolean alreadySeen = redisTemplate.hasKey(dedupKey);
 
         if (Boolean.TRUE.equals(alreadySeen)) {
             List<String> newUsers = extractUserIds(logLines);
             if (!newUsers.isEmpty()) {
-                ticketService.findOpenTicketByService(serviceName).ifPresent(ticket -> {
-                    ticketService.appendAffectedUsers(ticket.getId(), newUsers);
-                    log.info("Appended {} users to ticket #{} for {}",
-                            newUsers.size(), ticket.getId(), serviceName);
-                });
+                ticketService.findOpenTicketByService(serviceName, fixTypeHint)
+                        .ifPresent(ticket -> {
+                            ticketService.appendAffectedUsers(ticket.getId(), newUsers);
+                            log.info("Appended {} users to ticket #{} ({})",
+                                    newUsers.size(), ticket.getId(), fixTypeHint);
+                        });
             }
             return;
         }
 
-        // New window — mark immediately before any async work
-        redisTemplate.opsForValue().set(dedupKey, "1", Duration.ofSeconds(dedupTtlSeconds));
-        log.info("New error window for {}. Sending {} lines to AI.", serviceName, logLines.size());
+        // Mark immediately
+        redisTemplate.opsForValue().set(dedupKey, "1",
+                Duration.ofSeconds(dedupTtlSeconds));
+
+        log.info("New {} error window for {}. Sending {} lines to AI.",
+                fixTypeHint, serviceName, logLines.size());
 
         AgentResponse response = agentService.analyze(serviceName, logLines);
 
@@ -109,12 +145,10 @@ public class LogConsumerService {
             try {
                 String payload = objectMapper.writeValueAsString(response);
                 rabbitTemplate.convertAndSend(ticketQueue, payload);
-                log.info("AgentResponse published to RabbitMQ for: {}", serviceName);
+                log.info("AgentResponse published for {} ({})", serviceName, fixTypeHint);
             } catch (Exception e) {
                 log.error("Failed to publish to RabbitMQ: {}", e.getMessage());
             }
-        } else {
-            log.warn("AI agent returned null for: {}", serviceName);
         }
     }
 

@@ -46,6 +46,12 @@ public class Ticket {
     @Column(name = "pr_url", columnDefinition = "TEXT")
     private String prUrl;
 
+    @Column(name = "external_vendor")
+    private String externalVendor;
+
+    public String getExternalVendor() { return externalVendor; }
+    public void setExternalVendor(String v) { this.externalVendor = v; }
+
     public String getPrUrl() { return prUrl; }
     public void setPrUrl(String prUrl) { this.prUrl = prUrl; }
 

@@ -21,6 +21,10 @@ public class AgentResponse {
     public String getServiceName() { return serviceName; }
     public void setServiceName(String serviceName) { this.serviceName = serviceName; }
 
+    private String externalVendor; // "visa", "mastercard", "gift", "fraud"
+
+    public String getExternalVendor() { return externalVendor; }
+    public void setExternalVendor(String v) { this.externalVendor = v; }
 
     public String getSqlScript() { return sqlScript; }
     public void setSqlScript(String sqlScript) { this.sqlScript = sqlScript; }

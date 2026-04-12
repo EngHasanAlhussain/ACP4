@@ -31,6 +31,7 @@ public class TicketService {
     private final AuditLogRepository auditLogRepository;
     private final GitHubService gitHubService;
     private final SqlExecutionService sqlExecutionService;
+    private final EmailService emailService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public TicketService(TicketRepository ticketRepository,
@@ -38,13 +39,15 @@ public class TicketService {
                          SqlFixRepository sqlFixRepository,
                          AuditLogRepository auditLogRepository,
                          GitHubService gitHubService,
-                         SqlExecutionService sqlExecutionService) {
-        this.ticketRepository = ticketRepository;
-        this.codeFixRepository = codeFixRepository;
-        this.sqlFixRepository = sqlFixRepository;
-        this.auditLogRepository = auditLogRepository;
-        this.gitHubService = gitHubService;
+                         SqlExecutionService sqlExecutionService,
+                         EmailService emailService) {
+        this.ticketRepository    = ticketRepository;
+        this.codeFixRepository   = codeFixRepository;
+        this.sqlFixRepository    = sqlFixRepository;
+        this.auditLogRepository  = auditLogRepository;
+        this.gitHubService       = gitHubService;
         this.sqlExecutionService = sqlExecutionService;
+        this.emailService        = emailService;
     }
 
     @RabbitListener(queues = "${app.rabbitmq.queue}")
@@ -67,12 +70,14 @@ public class TicketService {
         ticket.setRecommendedFix(response.getRecommendedFix());
         ticket.setEta(response.getEta());
         ticket.setAffectedUsers(response.getAffectedUsers());
+        ticket.setExternalVendor(response.getExternalVendor());
         ticket.setStatus("OPEN");
         ticket = ticketRepository.save(ticket);
-        log.info("Ticket #{} created for {} — fixType: {}",
-                ticket.getId(), ticket.getServiceName(), ticket.getFixType());
+        log.info("Ticket #{} created for {} — fixType: {} vendor: {}",
+                ticket.getId(), ticket.getServiceName(),
+                ticket.getFixType(), ticket.getExternalVendor());
 
-        // Save code fix for CODE_CHANGE
+        // Save code fix
         if ("CODE_CHANGE".equals(response.getFixType()) &&
                 response.getCodePatch() != null && !response.getCodePatch().isBlank()) {
             CodeFix fix = new CodeFix();
@@ -82,10 +87,9 @@ public class TicketService {
             fix.setExplanation(response.getCodeExplanation());
             fix.setStatus("PENDING");
             codeFixRepository.save(fix);
-            log.info("Code fix saved for ticket #{}", ticket.getId());
         }
 
-        // Save SQL fix for DB_OPERATION
+        // Save SQL fix
         if ("DB_OPERATION".equals(response.getFixType()) &&
                 response.getSqlScript() != null && !response.getSqlScript().isBlank()) {
             SqlFix sqlFix = new SqlFix();
@@ -95,7 +99,6 @@ public class TicketService {
                     ? response.getSqlExplanation() : "AI-generated SQL fix");
             sqlFix.setStatus("PENDING");
             sqlFixRepository.save(sqlFix);
-            log.info("SQL fix saved for ticket #{}", ticket.getId());
         }
 
         AuditLog audit = new AuditLog();
@@ -108,9 +111,10 @@ public class TicketService {
         return ticket;
     }
 
-    public Optional<Ticket> findOpenTicketByService(String serviceName) {
+    public Optional<Ticket> findOpenTicketByService(String serviceName, String fixType) {
         return ticketRepository
-                .findFirstByServiceNameAndStatusOrderByCreatedAtDesc(serviceName, "OPEN");
+                .findFirstByServiceNameAndStatusAndFixTypeOrderByCreatedAtDesc(
+                        serviceName, "OPEN", fixType);
     }
 
     public void appendAffectedUsers(Long ticketId, List<String> newUserIds) {
@@ -118,19 +122,13 @@ public class TicketService {
             Set<String> existing = new LinkedHashSet<>();
             if (ticket.getAffectedUsers() != null && !ticket.getAffectedUsers().isBlank()) {
                 Arrays.stream(ticket.getAffectedUsers().split(","))
-                        .map(String::trim)
-                        .filter(s -> !s.isBlank())
+                        .map(String::trim).filter(s -> !s.isBlank())
                         .forEach(existing::add);
             }
-
-            int beforeCount = existing.size();
+            int before = existing.size();
             existing.addAll(newUserIds);
-            int added = existing.size() - beforeCount;
-
-            if (added == 0) {
-                log.info("Ticket #{} — no new unique users to append", ticketId);
-                return;
-            }
+            int added = existing.size() - before;
+            if (added == 0) return;
 
             ticket.setAffectedUsers(String.join(", ", existing));
             ticket.setUpdatedAt(LocalDateTime.now());
@@ -166,26 +164,21 @@ public class TicketService {
                 String prUrl = gitHubService.createFixPullRequest(
                         ticketId, ticket.getServiceName(),
                         fix.getFilePath(), fix.getPatch(),
-                        ticket.getProblem(), fix.getExplanation()
-                );
+                        ticket.getProblem(), fix.getExplanation());
 
                 if (prUrl != null) {
                     ticket.setPrUrl(prUrl);
                     ticketRepository.save(ticket);
 
-                    AuditLog prAudit = new AuditLog();
-                    prAudit.setTicketId(ticketId);
-                    prAudit.setAction("PR_OPENED");
-                    prAudit.setPerformedBy("system");
-                    prAudit.setNotes("Pull request opened: " + prUrl);
-                    auditLogRepository.save(prAudit);
-                    log.info("PR created for ticket #{}: {}", ticketId, prUrl);
+                    AuditLog a = new AuditLog();
+                    a.setTicketId(ticketId); a.setAction("PR_OPENED");
+                    a.setPerformedBy("system");
+                    a.setNotes("Pull request opened: " + prUrl);
+                    auditLogRepository.save(a);
                 }
             });
 
             case "DB_OPERATION" -> sqlFixRepository.findByTicketId(ticketId).ifPresent(sqlFix -> {
-                log.info("Executing SQL fix for ticket #{}:\n{}", ticketId, sqlFix.getSqlScript());
-
                 SqlExecutionService.SqlExecutionResult result =
                         sqlExecutionService.execute(sqlFix.getSqlScript());
 
@@ -194,16 +187,40 @@ public class TicketService {
                 sqlFix.setExecutedAt(LocalDateTime.now());
                 sqlFixRepository.save(sqlFix);
 
-                AuditLog sqlAudit = new AuditLog();
-                sqlAudit.setTicketId(ticketId);
-                sqlAudit.setAction(result.isSuccess() ? "SQL_EXECUTED" : "SQL_FAILED");
-                sqlAudit.setPerformedBy(engineer);
-                sqlAudit.setNotes(result.getMessage());
-                auditLogRepository.save(sqlAudit);
-
-                log.info("SQL fix for ticket #{} — {}: {}",
-                        ticketId, result.isSuccess() ? "SUCCESS" : "FAILED", result.getMessage());
+                AuditLog a = new AuditLog();
+                a.setTicketId(ticketId);
+                a.setAction(result.isSuccess() ? "SQL_EXECUTED" : "SQL_FAILED");
+                a.setPerformedBy(engineer);
+                a.setNotes(result.getMessage());
+                auditLogRepository.save(a);
             });
+
+            case "EXTERNAL" -> {
+                String vendorName = ticket.getExternalVendor() != null
+                        ? ticket.getExternalVendor() : "external vendor";
+                try {
+                    String sentTo = emailService.sendVendorEscalation(ticket, engineer);
+
+                    AuditLog a = new AuditLog();
+                    a.setTicketId(ticketId);
+                    a.setAction("EMAIL_SENT");
+                    a.setPerformedBy(engineer);
+                    a.setNotes("Vendor escalation email sent to " + vendorName + " <" + sentTo + ">");
+                    auditLogRepository.save(a);
+
+                    log.info("Ticket #{} — email sent to {} for vendor {}",
+                            ticketId, sentTo, vendorName);
+                } catch (Exception e) {
+                    AuditLog a = new AuditLog();
+                    a.setTicketId(ticketId);
+                    a.setAction("EMAIL_FAILED");
+                    a.setPerformedBy(engineer);
+                    a.setNotes("Failed to send email to " + vendorName + ": " + e.getMessage());
+                    auditLogRepository.save(a);
+
+                    log.error("Email failed for ticket #{}: {}", ticketId, e.getMessage());
+                }
+            }
 
             default -> log.info("Ticket #{} approved ({}). Manual action required.",
                     ticketId, ticket.getFixType());
@@ -225,7 +242,7 @@ public class TicketService {
             case "CODE_CHANGE"   -> "Approved — PR opened on GitHub for staging review";
             case "CONFIG_CHANGE" -> "Approved — configuration change to be applied by ops team";
             case "DB_OPERATION"  -> "Approved — SQL script executed against database";
-            case "EXTERNAL"      -> "Approved — escalated to third-party vendor";
+            case "EXTERNAL"      -> "Approved — vendor escalation email sent automatically";
             default              -> "Approved — assigned for manual investigation";
         };
     }
@@ -239,21 +256,16 @@ public class TicketService {
         ticketRepository.save(ticket);
 
         codeFixRepository.findByTicketId(ticketId).ifPresent(fix -> {
-            fix.setStatus("REJECTED");
-            fix.setUpdatedAt(LocalDateTime.now());
+            fix.setStatus("REJECTED"); fix.setUpdatedAt(LocalDateTime.now());
             codeFixRepository.save(fix);
         });
-
         sqlFixRepository.findByTicketId(ticketId).ifPresent(fix -> {
-            fix.setStatus("REJECTED");
-            sqlFixRepository.save(fix);
+            fix.setStatus("REJECTED"); sqlFixRepository.save(fix);
         });
 
         AuditLog audit = new AuditLog();
-        audit.setTicketId(ticketId);
-        audit.setAction("REJECTED");
-        audit.setPerformedBy(engineer);
-        audit.setNotes(reason);
+        audit.setTicketId(ticketId); audit.setAction("REJECTED");
+        audit.setPerformedBy(engineer); audit.setNotes(reason);
         auditLogRepository.save(audit);
 
         log.info("Ticket #{} rejected by {}: {}", ticketId, engineer, reason);

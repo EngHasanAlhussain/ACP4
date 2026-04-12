@@ -73,6 +73,7 @@ public class ClaudeAgentService {
                   "recommendedFix": "step by step fix instructions appropriate for the fixType",
                   "eta": "estimated time to resolve e.g. 2 hours",
                   "affectedUsers": "comma-separated list of affected user IDs found in logs e.g. USR1234, USR5678. If no specific users identified, return empty string",
+                  "externalVendor": "if fixType is EXTERNAL, return a short lowercase vendor key extracted from the endpoint in the logs: visa, mastercard, gift, fraud. Return null if fixType is not EXTERNAL.",
                   "codeFilePath": "the file to change, or null if fixType is not CODE_CHANGE",
                   "codePatch": "the FULL corrected file content if fixType is CODE_CHANGE, otherwise null",
                   "codeExplanation": "explanation of the code fix, or null if fixType is not CODE_CHANGE",
@@ -83,8 +84,8 @@ public class ClaudeAgentService {
                 Fix type guidance:
                 - CODE_CHANGE: the bug is clearly in the application source code
                 - CONFIG_CHANGE: the issue is a misconfigured environment variable, timeout, or property
-                - DB_OPERATION: the fix requires running a database query — e.g. missing reference data, wrong config value in DB
-                - EXTERNAL: the issue is with a third-party API or upstream service outside our control
+                - DB_OPERATION: the fix requires running a database query — e.g. missing reference data
+                - EXTERNAL: the issue is with a third-party API or upstream service. Look for endpoint patterns like /v1/visa/pay, /v1/mastercard/authorize, /v1/gift/reward, /v1/fraud/check in the logs to identify the vendor
                 - INVESTIGATION: not enough information to determine root cause — escalate to engineer
 
                 Only respond with the JSON. No other text.
