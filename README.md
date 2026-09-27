@@ -118,13 +118,6 @@ are blocked at that layer regardless of what the AI proposes.
 
 See `TicketController` for the full surface.
 
-## Security note
-
-Earlier revisions of this repository committed real API keys and SMTP
-credentials to `application.properties` / `local.env`. Those values have
-since been rotated and the git history has been rewritten to remove them.
-Config now only ever contains `${ENV_VAR}` placeholders — provide real
-values via environment variables, never by editing tracked files.
 
 ## AI disclosure
 
