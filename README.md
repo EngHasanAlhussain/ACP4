@@ -1,7 +1,9 @@
 # Log Triage Agent
 
-Formerly named "ACP4" (a leftover coursework module code) — renamed to
-something that actually describes what the service does.
+A prototype exploring **automatic healing**: can a system detect its own
+errors from logs, diagnose them with an LLM, and propose (or apply) a fix
+with minimal human involvement. Submitted as a project for Applied Cloud
+Computing, University of Edinburgh, April 2026.
 
 Spring Boot service that consumes application log events, uses the Claude API
 to analyze and classify errors, and automatically opens/updates tickets
