@@ -1,4 +1,7 @@
-# ACP4 — Intelligent Log Analysis and Auto-Ticket System
+# Log Triage Agent
+
+Formerly named "ACP4" (a leftover coursework module code) — renamed to
+something that actually describes what the service does.
 
 Spring Boot service that consumes application log events, uses the Claude API
 to analyze and classify errors, and automatically opens/updates tickets
