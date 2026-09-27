@@ -69,3 +69,11 @@ credentials to `application.properties` / `local.env`. Those values have
 since been rotated and the git history has been rewritten to remove them.
 Config now only ever contains `${ENV_VAR}` placeholders — provide real
 values via environment variables, never by editing tracked files.
+
+## AI disclosure
+
+This repository's maintenance was organized with the help of Claude
+(Anthropic): scrubbing leaked credentials from git history, rewriting and
+force-pushing the cleaned history, untracking `local.env`, and writing this
+README and the LICENSE file. The application code and design are the
+author's own work.
